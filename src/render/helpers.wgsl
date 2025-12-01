@@ -78,6 +78,21 @@ fn get_bounding_box_clip(
     );
 #endif
 
+#ifdef USE_TRIANGLE
+    let radius_px = cutoff * max(x_axis_length, y_axis_length);
+    let radius_ndc = vec2<f32>(
+        radius_px / view.viewport.z,
+        radius_px / view.viewport.w,
+    );
+    let vertex_px = direction * radius_px;
+    let ndc_vertex = direction * radius_ndc;
+
+    return vec4<f32>(
+        ndc_vertex,
+        vertex_px,
+    );
+#endif
+
 #ifdef USE_OBB
 
     let a = (cov2d.x - cov2d.z) * (cov2d.x - cov2d.z);
