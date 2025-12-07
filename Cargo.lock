@@ -1125,6 +1125,7 @@ dependencies = [
  "flate2",
  "flexbuffers",
  "futures-intrusive",
+ "getrandom 0.3.3",
  "half",
  "kd-tree",
  "noise",
