@@ -1,4 +1,4 @@
-use rand::{Rng, prelude::Distribution};
+use rand::{distr::{Distribution, StandardUniform}, rng, Rng};
 use std::marker::Copy;
 
 #[allow(unused_imports)]
@@ -400,26 +400,26 @@ impl Default for ParticleBehavior {
 #[derive(Asset, Clone, Debug, Default, PartialEq, Reflect, Serialize, Deserialize)]
 pub struct ParticleBehaviors(pub Vec<ParticleBehavior>);
 
-impl Distribution<ParticleBehavior> for rand::distributions::Standard {
+impl Distribution<ParticleBehavior> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ParticleBehavior {
         ParticleBehavior {
             acceleration: [
-                rng.gen_range(-0.01..0.01),
-                rng.gen_range(-0.01..0.01),
-                rng.gen_range(-0.01..0.01),
-                rng.gen_range(-0.01..0.01),
+                rng.random_range(-0.01..0.01),
+                rng.random_range(-0.01..0.01),
+                rng.random_range(-0.01..0.01),
+                rng.random_range(-0.01..0.01),
             ],
             jerk: [
-                rng.gen_range(-0.0001..0.0001),
-                rng.gen_range(-0.0001..0.0001),
-                rng.gen_range(-0.0001..0.0001),
-                rng.gen_range(-0.0001..0.0001),
+                rng.random_range(-0.0001..0.0001),
+                rng.random_range(-0.0001..0.0001),
+                rng.random_range(-0.0001..0.0001),
+                rng.random_range(-0.0001..0.0001),
             ],
             velocity: [
-                rng.gen_range(-1.0..1.0),
-                rng.gen_range(-1.0..1.0),
-                rng.gen_range(-1.0..1.0),
-                rng.gen_range(-1.0..1.0),
+                rng.random_range(-1.0..1.0),
+                rng.random_range(-1.0..1.0),
+                rng.random_range(-1.0..1.0),
+                rng.random_range(-1.0..1.0),
             ],
             ..Default::default()
         }
@@ -427,10 +427,10 @@ impl Distribution<ParticleBehavior> for rand::distributions::Standard {
 }
 
 pub fn random_particle_behaviors(n: usize) -> ParticleBehaviors {
-    let mut rng = rand::thread_rng();
+    let mut rng = rng();
     let mut behaviors = Vec::with_capacity(n);
     for i in 0..n {
-        let mut behavior: ParticleBehavior = rng.r#gen();
+        let mut behavior: ParticleBehavior = rng.random();
         behavior.indicies[0] = i as u32;
         behaviors.push(behavior);
     }

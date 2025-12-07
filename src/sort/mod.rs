@@ -60,11 +60,11 @@ pub enum SortMode {
 impl Default for SortMode {
     #[allow(unreachable_code)]
     fn default() -> Self {
-        #[cfg(feature = "sort_rayon")]
-        return Self::Rayon;
-
         #[cfg(feature = "sort_radix")]
         return Self::Radix;
+
+        #[cfg(feature = "sort_rayon")]
+        return Self::Rayon;
 
         #[cfg(feature = "sort_std")]
         return Self::Std;
