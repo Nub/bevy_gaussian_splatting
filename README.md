@@ -9,7 +9,7 @@ cargo build --target wasm32-unknown-unknown --release --no-default-features --fe
 ```
 
 to generate bindings:
-> `wasm-bindgen --out-dir ./www/out/ --target web ./target/wasm32-unknown-unknown/release/viewer.wasm`
+> `wasm-bindgen --out-dir ./www/out/ --target web ./target/wasm32-unknown-unknown/release/bevy_gaussian_splatting.wasm`
 
 
 open a live server of `index.html` and append args: `?arg1=[n | *.gcloud]`
