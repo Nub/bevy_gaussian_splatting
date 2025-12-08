@@ -6,10 +6,10 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
   readonly main: (a: number, b: number) => number;
-  readonly wasm_bindgen_c7d899d3011d2992___convert__closures_____invoke___js_sys_21dc6a8ba0a4b1eb___Array_____: (a: number, b: number, c: any) => void;
-  readonly wasm_bindgen_c7d899d3011d2992___closure__destroy___dyn_core_66cced3f6f337be4___ops__function__FnMut__js_sys_21dc6a8ba0a4b1eb___Array____Output_______: (a: number, b: number) => void;
   readonly wasm_bindgen_c7d899d3011d2992___convert__closures_____invoke___web_sys_708de39a40d5ad82___features__gen_InputEvent__InputEvent_____: (a: number, b: number, c: any) => void;
   readonly wasm_bindgen_c7d899d3011d2992___closure__destroy___dyn_core_66cced3f6f337be4___ops__function__FnMut__web_sys_708de39a40d5ad82___features__gen_InputEvent__InputEvent____Output_______: (a: number, b: number) => void;
+  readonly wasm_bindgen_c7d899d3011d2992___convert__closures_____invoke___js_sys_21dc6a8ba0a4b1eb___Array_____: (a: number, b: number, c: any) => void;
+  readonly wasm_bindgen_c7d899d3011d2992___closure__destroy___dyn_core_66cced3f6f337be4___ops__function__FnMut__js_sys_21dc6a8ba0a4b1eb___Array____Output_______: (a: number, b: number) => void;
   readonly wasm_bindgen_c7d899d3011d2992___convert__closures_____invoke___wasm_bindgen_c7d899d3011d2992___JsValue_____: (a: number, b: number, c: any) => void;
   readonly wasm_bindgen_c7d899d3011d2992___closure__destroy___dyn_core_66cced3f6f337be4___ops__function__FnMut__wasm_bindgen_c7d899d3011d2992___JsValue____Output_______: (a: number, b: number) => void;
   readonly wasm_bindgen_c7d899d3011d2992___convert__closures_____invoke___js_sys_21dc6a8ba0a4b1eb___Array__web_sys_708de39a40d5ad82___features__gen_ResizeObserver__ResizeObserver_____: (a: number, b: number, c: any, d: any) => void;
