@@ -316,7 +316,7 @@ pub fn get_sorted_bind_group_layout(render_device: &RenderDevice) -> BindGroupLa
         Some("texture_sorted_layout"),
         &[BindGroupLayoutEntry {
             binding: 0,
-            visibility: ShaderStages::all(),
+            visibility: ShaderStages::VERTEX_FRAGMENT | ShaderStages::COMPUTE,
             ty: BindingType::Texture {
                 view_dimension: TextureViewDimension::D2,
                 sample_type: TextureSampleType::Uint,
@@ -383,7 +383,7 @@ pub fn get_bind_group_layout(render_device: &RenderDevice, read_only: bool) -> B
         &[
             BindGroupLayoutEntry {
                 binding: 0,
-                visibility: ShaderStages::all(),
+                visibility: ShaderStages::VERTEX_FRAGMENT | ShaderStages::COMPUTE,
                 ty: BindingType::Buffer {
                     ty: BufferBindingType::Storage { read_only },
                     has_dynamic_offset: false,
@@ -395,7 +395,7 @@ pub fn get_bind_group_layout(render_device: &RenderDevice, read_only: bool) -> B
             },
             BindGroupLayoutEntry {
                 binding: 1,
-                visibility: ShaderStages::all(),
+                visibility: ShaderStages::VERTEX_FRAGMENT | ShaderStages::COMPUTE,
                 ty: BindingType::Buffer {
                     ty: BufferBindingType::Storage { read_only },
                     has_dynamic_offset: false,
@@ -407,7 +407,7 @@ pub fn get_bind_group_layout(render_device: &RenderDevice, read_only: bool) -> B
             },
             BindGroupLayoutEntry {
                 binding: 2,
-                visibility: ShaderStages::all(),
+                visibility: ShaderStages::VERTEX_FRAGMENT | ShaderStages::COMPUTE,
                 ty: BindingType::Buffer {
                     ty: BufferBindingType::Storage { read_only },
                     has_dynamic_offset: false,
@@ -417,7 +417,7 @@ pub fn get_bind_group_layout(render_device: &RenderDevice, read_only: bool) -> B
             },
             BindGroupLayoutEntry {
                 binding: 3,
-                visibility: ShaderStages::all(),
+                visibility: ShaderStages::VERTEX_FRAGMENT | ShaderStages::COMPUTE,
                 ty: BindingType::Buffer {
                     ty: BufferBindingType::Storage { read_only },
                     has_dynamic_offset: false,

@@ -60,11 +60,11 @@ pub enum SortMode {
 impl Default for SortMode {
     #[allow(unreachable_code)]
     fn default() -> Self {
-        #[cfg(feature = "sort_rayon")]
-        return Self::Rayon;
-
         #[cfg(feature = "sort_radix")]
         return Self::Radix;
+
+        #[cfg(feature = "sort_rayon")]
+        return Self::Rayon;
 
         #[cfg(feature = "sort_std")]
         return Self::Std;
@@ -161,20 +161,24 @@ fn update_sort_trigger(
     }
 
     for (camera_transform, camera, mut sort_trigger) in existing_sort_triggers.iter_mut() {
-        if sort_trigger.last_sort_time.is_none() {
-            assert!(
-                camera.order >= 0,
-                "camera order must be a non-negative index into gaussian cameras"
-            );
+        match sort_trigger.last_sort_time.as_ref() {
+            None => {
+                assert!(
+                    camera.order >= 0,
+                    "camera order must be a non-negative index into gaussian cameras"
+                );
 
-            sort_trigger.camera_index = camera.order as usize;
-            sort_trigger.needs_sort = true;
-            sort_trigger.last_sort_time = Some(Instant::now());
-            continue;
-        } else if sort_trigger.last_sort_time.unwrap().elapsed()
-            < Duration::from_millis(sort_config.period_ms as u64)
-        {
-            continue;
+                sort_trigger.camera_index = camera.order as usize;
+                sort_trigger.needs_sort = true;
+                sort_trigger.last_sort_time = Some(Instant::now());
+                continue;
+            }
+            Some(last_sort_time)
+                if last_sort_time.elapsed() < Duration::from_millis(sort_config.period_ms as u64) =>
+            {
+                continue;
+            }
+            Some(_) => {}
         }
 
         let camera_position = camera_transform.affine().translation;

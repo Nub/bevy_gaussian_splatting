@@ -529,7 +529,7 @@ where
         let compute_view_layout_entries = vec![
             BindGroupLayoutEntry {
                 binding: 0,
-                visibility: ShaderStages::all(),
+                visibility: ShaderStages::VERTEX_FRAGMENT | ShaderStages::COMPUTE,
                 ty: BindingType::Buffer {
                     ty: BufferBindingType::Uniform,
                     has_dynamic_offset: true,
@@ -539,7 +539,7 @@ where
             },
             BindGroupLayoutEntry {
                 binding: 1,
-                visibility: ShaderStages::all(),
+                visibility: ShaderStages::VERTEX_FRAGMENT | ShaderStages::COMPUTE,
                 ty: BindingType::Buffer {
                     ty: BufferBindingType::Uniform,
                     has_dynamic_offset: false,
@@ -549,7 +549,7 @@ where
             },
             BindGroupLayoutEntry {
                 binding: 2,
-                visibility: ShaderStages::all(),
+                visibility: ShaderStages::VERTEX_FRAGMENT | ShaderStages::COMPUTE,
                 ty: BindingType::Buffer {
                     ty: BufferBindingType::Uniform,
                     has_dynamic_offset: true,
@@ -572,7 +572,7 @@ where
             Some("gaussian_uniform_layout"),
             &[BindGroupLayoutEntry {
                 binding: 0,
-                visibility: ShaderStages::all(),
+                visibility: ShaderStages::VERTEX_FRAGMENT | ShaderStages::COMPUTE,
                 ty: BindingType::Buffer {
                     ty: BufferBindingType::Uniform,
                     has_dynamic_offset: true,
