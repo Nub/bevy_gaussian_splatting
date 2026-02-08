@@ -3,11 +3,11 @@ use core::time::Duration;
 use std::marker::PhantomData;
 
 use bevy::{
+    asset::RenderAssetUsages,
     ecs::system::{SystemParamItem, lifetimeless::SRes},
     math::Vec3A,
     platform::time::Instant,
     prelude::*,
-    asset::RenderAssetUsages,
     render::{
         extract_component::{ExtractComponent, ExtractComponentPlugin},
         render_asset::{PrepareAssetError, RenderAsset, RenderAssetPlugin},
@@ -25,7 +25,7 @@ use crate::{CloudSettings, camera::GaussianCamera, gaussian::interface::CommonCl
 #[cfg(feature = "sort_bitonic")]
 pub mod bitonic;
 
-#[cfg(feature = "sort_radix")]
+#[cfg(all(feature = "sort_radix", not(feature = "buffer_texture")))]
 pub mod radix;
 
 #[cfg(feature = "sort_rayon")]
@@ -47,7 +47,7 @@ assert_cfg!(
 pub enum SortMode {
     None,
 
-    #[cfg(feature = "sort_radix")]
+    #[cfg(all(feature = "sort_radix", not(feature = "buffer_texture")))]
     Radix,
 
     #[cfg(feature = "sort_rayon")]
@@ -60,7 +60,7 @@ pub enum SortMode {
 impl Default for SortMode {
     #[allow(unreachable_code)]
     fn default() -> Self {
-        #[cfg(feature = "sort_radix")]
+        #[cfg(all(feature = "sort_radix", not(feature = "buffer_texture")))]
         return Self::Radix;
 
         #[cfg(feature = "sort_rayon")]
@@ -103,7 +103,7 @@ where
     R::GpuPlanarType: GpuPlanarStorage,
 {
     fn build(&self, app: &mut App) {
-        #[cfg(feature = "sort_radix")]
+        #[cfg(all(feature = "sort_radix", not(feature = "buffer_texture")))]
         app.add_plugins(radix::RadixSortPlugin::<R>::default());
 
         #[cfg(feature = "sort_rayon")]
@@ -174,7 +174,8 @@ fn update_sort_trigger(
                 continue;
             }
             Some(last_sort_time)
-                if last_sort_time.elapsed() < Duration::from_millis(sort_config.period_ms as u64) =>
+                if last_sort_time.elapsed()
+                    < Duration::from_millis(sort_config.period_ms as u64) =>
             {
                 continue;
             }
@@ -204,7 +205,7 @@ fn update_textures_on_change(
                 let sorted_entries = sorted_entries_res.get(*id).unwrap();
                 let image = images.get_mut(&sorted_entries.texture).unwrap();
 
-                image.data = bytemuck::cast_slice(sorted_entries.sorted.as_slice()).to_vec();
+                image.data = Some(bytemuck::cast_slice(sorted_entries.sorted.as_slice()).to_vec());
             }
             AssetEvent::Added { id: _ } => {}
             AssetEvent::Removed { id: _ } => {}
@@ -242,11 +243,11 @@ fn auto_insert_sorted_entries<R: PlanarSync>(
         //     continue;
         // }
 
-        if let Some(load_state) = asset_server.get_load_state(gaussian_cloud_handle.handle()) {
-            if load_state.is_loading() {
-                debug!("cloud asset is still loading");
-                continue;
-            }
+        if let Some(load_state) = asset_server.get_load_state(gaussian_cloud_handle.handle())
+            && load_state.is_loading()
+        {
+            debug!("cloud asset is still loading");
+            continue;
         }
 
         let cloud = gaussian_clouds_res.get(gaussian_cloud_handle.handle());
@@ -260,7 +261,7 @@ fn auto_insert_sorted_entries<R: PlanarSync>(
             camera_count,
             cloud.len_sqrt_ceil().pow(2),
             #[cfg(feature = "buffer_texture")]
-            images,
+            &mut images,
         ));
 
         commands
@@ -283,16 +284,16 @@ fn update_sorted_entries_sizes(
             continue;
         }
 
-        if let Some(sorted_entries) = sorted_entries_res.get(handle) {
-            if sorted_entries.camera_count != camera_count {
-                let new_entry = SortedEntries::new(
-                    camera_count,
-                    sorted_entries.entry_count,
-                    #[cfg(feature = "buffer_texture")]
-                    images,
-                );
-                let _ = sorted_entries_res.insert(handle, new_entry);
-            }
+        if let Some(sorted_entries) = sorted_entries_res.get(handle)
+            && sorted_entries.camera_count != camera_count
+        {
+            let new_entry = SortedEntries::new(
+                camera_count,
+                sorted_entries.entry_count,
+                #[cfg(feature = "buffer_texture")]
+                &mut images,
+            );
+            let _ = sorted_entries_res.insert(handle, new_entry);
         }
     }
 }
@@ -341,9 +342,9 @@ impl SortedEntries {
     pub fn new(
         camera_count: usize,
         entry_count: usize,
-        #[cfg(feature = "buffer_texture")] mut images: ResMut<Assets<Image>>,
+        #[cfg(feature = "buffer_texture")] images: &mut Assets<Image>,
     ) -> Self {
-        let sorted = (0..camera_count)
+        let sorted: Vec<SortEntry> = (0..camera_count)
             .flat_map(|_camera_idx| {
                 (0..entry_count).map(|idx| SortEntry {
                     key: 1,
@@ -352,8 +353,15 @@ impl SortedEntries {
             })
             .collect();
 
-        // TODO: move gaussian_cloud and sorted_entry assets into an asset bundle
-        #[cfg(feature = "buffer_storage")]
+        #[cfg(feature = "buffer_texture")]
+        let mut sorted_entries = SortedEntries {
+            camera_count,
+            entry_count,
+            sorted,
+            texture: Handle::default(),
+        };
+
+        #[cfg(not(feature = "buffer_texture"))]
         let sorted_entries = SortedEntries {
             camera_count,
             entry_count,
@@ -361,22 +369,24 @@ impl SortedEntries {
         };
 
         #[cfg(feature = "buffer_texture")]
-        let sorted_entries = SortedEntries {
-            camera_count,
-            entry_count,
-            sorted,
-            texture: images.add(Image::new(
+        {
+            let side = (entry_count as f32).sqrt().ceil() as u32;
+            let data = bytemuck::cast_slice(sorted_entries.sorted.as_slice()).to_vec();
+            let mut image = Image::new(
                 Extent3d {
-                    width: cloud.len_sqrt_ceil() as u32,
-                    height: cloud.len_sqrt_ceil() as u32,
-                    depth_or_array_layers: gaussian_cameras.iter().len(),
+                    width: side,
+                    height: side,
+                    depth_or_array_layers: camera_count as u32,
                 },
                 TextureDimension::D2,
-                bytemuck::cast_slice(sorted.as_slice()).to_vec(),
+                data,
                 TextureFormat::Rg32Uint,
                 RenderAssetUsages::default(),
-            )),
-        };
+            );
+            image.texture_descriptor.usage =
+                TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST;
+            sorted_entries.texture = images.add(image);
+        }
 
         sorted_entries
     }

@@ -12,6 +12,7 @@ use bevy::{
     image::TextureFormatPixelInfo,
     prelude::*,
     render::{
+        Extract, Render, RenderApp, RenderSystems,
         render_asset::RenderAssets,
         render_graph::{self, NodeRunError, RenderGraph, RenderGraphContext, RenderLabel},
         render_resource::{
@@ -20,23 +21,23 @@ use bevy::{
         },
         renderer::{RenderContext, RenderDevice, RenderQueue},
         texture::GpuImage,
-        Extract, Render, RenderApp, RenderSystems,
     },
     window::ExitCondition,
     winit::WinitPlugin,
 };
 use bevy_args::BevyArgsPlugin;
 use bevy_gaussian_splatting::{
-    CloudSettings, GaussianCamera, GaussianSplattingPlugin, PlanarGaussian3d,
-    PlanarGaussian3dHandle, gaussian::interface::TestCloud, random_gaussians_3d,
-    utils::GaussianSplattingViewer,
+    CloudSettings, GaussianCamera, GaussianMode, GaussianSplattingPlugin, PlanarGaussian3d,
+    PlanarGaussian3dHandle, PlanarGaussian4d, PlanarGaussian4dHandle,
+    gaussian::interface::TestCloud, random_gaussians_3d, random_gaussians_3d_seeded,
+    random_gaussians_4d, random_gaussians_4d_seeded, utils::GaussianSplattingViewer,
 };
 use crossbeam_channel::{Receiver, Sender};
 use std::{
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
@@ -57,7 +58,7 @@ struct CaptureController {
 impl CaptureController {
     pub fn new(width: u32, height: u32) -> Self {
         Self {
-            frames_to_wait: 40, 
+            frames_to_wait: 40,
             width,
             height,
         }
@@ -82,32 +83,31 @@ fn main() {
         .add_plugins(BevyArgsPlugin::<GaussianSplattingViewer>::default())
         .add_plugins(ImageCopyPlugin)
         .add_plugins(CaptureFramePlugin)
-        .add_plugins(ScheduleRunnerPlugin::run_loop(
-            Duration::from_secs_f64(1.0 / 60.0),
-        ))
+        .add_plugins(ScheduleRunnerPlugin::run_loop(Duration::from_secs_f64(
+            1.0 / 60.0,
+        )))
         .add_plugins(GaussianSplattingPlugin)
         .add_systems(Startup, setup_gaussian_cloud)
         .run();
 }
 
+#[allow(clippy::too_many_arguments)]
 fn setup_gaussian_cloud(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     args: Res<GaussianSplattingViewer>,
     mut gaussian_assets: ResMut<Assets<PlanarGaussian3d>>,
+    mut gaussian_4d_assets: ResMut<Assets<PlanarGaussian4d>>,
     mut images: ResMut<Assets<Image>>,
     render_device: Res<RenderDevice>,
     controller: Res<CaptureController>,
 ) {
-    // Load or generate gaussian cloud
-    let cloud = if args.gaussian_count > 0 {
-        println!("Generating {} gaussians", args.gaussian_count);
-        gaussian_assets.add(random_gaussians_3d(args.gaussian_count))
-    } else if args.input_cloud.is_some() && !args.input_cloud.as_ref().unwrap().is_empty() {
-        println!("Loading {:?}", args.input_cloud);
-        asset_server.load(&args.input_cloud.as_ref().unwrap().clone())
-    } else {
-        gaussian_assets.add(PlanarGaussian3d::test_model())
+    let cloud_transform = args.cloud_transform();
+    let cloud_settings = CloudSettings {
+        gaussian_mode: args.gaussian_mode,
+        playback_mode: args.playback_mode,
+        rasterize_mode: args.rasterization_mode,
+        ..default()
     };
 
     // Setup render target
@@ -117,44 +117,74 @@ fn setup_gaussian_cloud(
         ..default()
     };
 
-    let mut render_target_image = Image::new_target_texture(
-        size.width,
-        size.height,
-        TextureFormat::bevy_default(),
-    );
+    let mut render_target_image =
+        Image::new_target_texture(size.width, size.height, TextureFormat::bevy_default(), None);
     render_target_image.texture_descriptor.usage |= TextureUsages::COPY_SRC;
     let render_target_handle = images.add(render_target_image);
 
-    let cpu_image = Image::new_target_texture(
-        size.width,
-        size.height,
-        TextureFormat::bevy_default(),
-    );
+    let cpu_image =
+        Image::new_target_texture(size.width, size.height, TextureFormat::bevy_default(), None);
     let cpu_image_handle = images.add(cpu_image);
 
-    commands.spawn((
-        PlanarGaussian3dHandle(cloud),
-        CloudSettings::default(),
-        Name::new("gaussian_cloud"),
-    ));
+    match args.gaussian_mode {
+        GaussianMode::Gaussian2d | GaussianMode::Gaussian3d => {
+            // Load or generate gaussian cloud
+            let cloud = if args.gaussian_count > 0 {
+                println!("Generating {} gaussians", args.gaussian_count);
+                if let Some(seed) = args.gaussian_seed {
+                    gaussian_assets.add(random_gaussians_3d_seeded(args.gaussian_count, seed))
+                } else {
+                    gaussian_assets.add(random_gaussians_3d(args.gaussian_count))
+                }
+            } else if args.input_cloud.is_some() && !args.input_cloud.as_ref().unwrap().is_empty() {
+                println!("Loading {:?}", args.input_cloud);
+                asset_server.load(args.input_cloud.as_ref().unwrap())
+            } else {
+                gaussian_assets.add(PlanarGaussian3d::test_model())
+            };
+
+            commands.spawn((
+                PlanarGaussian3dHandle(cloud),
+                cloud_settings.clone(),
+                Name::new("gaussian_cloud"),
+                cloud_transform,
+            ));
+        }
+        GaussianMode::Gaussian4d => {
+            let cloud = if args.gaussian_count > 0 {
+                println!("Generating {} gaussians", args.gaussian_count);
+                if let Some(seed) = args.gaussian_seed {
+                    gaussian_4d_assets.add(random_gaussians_4d_seeded(args.gaussian_count, seed))
+                } else {
+                    gaussian_4d_assets.add(random_gaussians_4d(args.gaussian_count))
+                }
+            } else if args.input_cloud.is_some() && !args.input_cloud.as_ref().unwrap().is_empty() {
+                println!("Loading {:?}", args.input_cloud);
+                asset_server.load(args.input_cloud.as_ref().unwrap())
+            } else {
+                gaussian_4d_assets.add(PlanarGaussian4d::test_model())
+            };
+
+            commands.spawn((
+                PlanarGaussian4dHandle(cloud),
+                cloud_settings,
+                Name::new("gaussian_cloud"),
+                cloud_transform,
+            ));
+        }
+    }
 
     commands.spawn((
         Camera3d::default(),
-        Camera {
-            target: RenderTarget::Image(render_target_handle.clone().into()),
-            ..default()
-        },
+        Camera::default(),
+        RenderTarget::Image(render_target_handle.clone().into()),
         Transform::from_translation(Vec3::new(0.0, 1.5, 5.0)),
         Tonemapping::None,
         GaussianCamera::default(),
     ));
 
     // Spawn image copier for GPU->CPU transfer
-    commands.spawn(ImageCopier::new(
-        render_target_handle,
-        size,
-        &render_device,
-    ));
+    commands.spawn(ImageCopier::new(render_target_handle, size, &render_device));
 
     // Spawn image to save
     commands.spawn(ImageToSave(cpu_image_handle));
@@ -202,8 +232,7 @@ struct ImageCopier {
 
 impl ImageCopier {
     pub fn new(src_image: Handle<Image>, size: Extent3d, render_device: &RenderDevice) -> Self {
-        let padded_bytes_per_row =
-            RenderDevice::align_copy_bytes_per_row(size.width as usize) * 4;
+        let padded_bytes_per_row = RenderDevice::align_copy_bytes_per_row(size.width as usize) * 4;
 
         let buffer = render_device.create_buffer(&BufferDescriptor {
             label: Some("image_copier_buffer"),
@@ -227,13 +256,8 @@ impl ImageCopier {
 #[derive(Clone, Default, Resource, Deref)]
 struct ImageCopiers(Vec<ImageCopier>);
 
-fn extract_image_copiers(
-    mut commands: Commands,
-    image_copiers: Extract<Query<&ImageCopier>>,
-) {
-    commands.insert_resource(ImageCopiers(
-        image_copiers.iter().cloned().collect(),
-    ));
+fn extract_image_copiers(mut commands: Commands, image_copiers: Extract<Query<&ImageCopier>>) {
+    commands.insert_resource(ImageCopiers(image_copiers.iter().cloned().collect()));
 }
 
 /// RenderGraph label
@@ -317,7 +341,7 @@ fn receive_image_from_buffer(
         });
 
         render_device
-            .poll(PollType::Wait)
+            .poll(PollType::wait_indefinitely())
             .expect("Failed to poll device");
 
         rx.recv().expect("Failed to receive buffer map");
@@ -346,7 +370,7 @@ fn save_captured_frame(
     // Try to receive image data
     let mut image_data = Vec::new();
     while let Ok(data) = receiver.try_recv() {
-        image_data = data; 
+        image_data = data;
     }
 
     if image_data.is_empty() {
@@ -358,8 +382,8 @@ fn save_captured_frame(
             continue;
         };
 
-        let row_bytes = image.width() as usize
-            * image.texture_descriptor.format.pixel_size().unwrap();
+        let row_bytes =
+            image.width() as usize * image.texture_descriptor.format.pixel_size().unwrap();
         let aligned_row_bytes = RenderDevice::align_copy_bytes_per_row(row_bytes);
 
         if row_bytes == aligned_row_bytes {

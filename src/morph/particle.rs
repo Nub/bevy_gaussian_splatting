@@ -1,24 +1,27 @@
-use rand::{distr::{Distribution, StandardUniform}, rng, Rng};
+use rand::{
+    Rng,
+    distr::{Distribution, StandardUniform},
+    rng,
+};
 use std::marker::Copy;
 
 #[allow(unused_imports)]
 use bevy::{
-    asset::{LoadState, load_internal_asset, uuid_handle},
+    asset::{LoadState, RenderAssetUsages, load_internal_asset, uuid_handle},
     core_pipeline::core_3d::graph::{Core3d, Node3d},
     ecs::system::{SystemParamItem, lifetimeless::SRes},
     prelude::*,
     render::{
         Extract, Render, RenderApp, RenderSystems,
-        render_asset::{
-            PrepareAssetError, RenderAsset, RenderAssetPlugin, RenderAssetUsages, RenderAssets,
-        },
-        render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext, RenderLabel},
+        render_asset::{PrepareAssetError, RenderAsset, RenderAssetPlugin, RenderAssets},
+        render_graph::{Node, NodeRunError, RenderGraphContext, RenderGraphExt, RenderLabel},
         render_resource::{
-            BindGroup, BindGroupEntry, BindGroupLayout, BindGroupLayoutEntry, BindingResource,
-            BindingType, Buffer, BufferBinding, BufferBindingType, BufferInitDescriptor,
-            BufferSize, BufferUsages, CachedComputePipelineId, CachedPipelineState,
-            ComputePassDescriptor, ComputePipelineDescriptor, Extent3d, PipelineCache,
-            ShaderStages, ShaderType, TextureDimension, TextureFormat,
+            BindGroup, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+            BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferBinding,
+            BufferBindingType, BufferInitDescriptor, BufferSize, BufferUsages,
+            CachedComputePipelineId, CachedPipelineState, ComputePassDescriptor,
+            ComputePipelineDescriptor, Extent3d, PipelineCache, ShaderStages, ShaderType,
+            TextureDimension, TextureFormat,
         },
         renderer::{RenderContext, RenderDevice},
         view::ViewUniformOffset,
@@ -109,7 +112,7 @@ pub fn extract_particle_behaviors(
         commands_list.push((entity, behaviors.clone()));
     }
     *prev_commands_len = commands_list.len();
-    commands.insert_or_spawn_batch(commands_list);
+    commands.insert_batch(commands_list);
 }
 
 #[derive(Debug, Clone)]
@@ -126,6 +129,7 @@ impl RenderAsset for GpuParticleBehaviorBuffers {
         source: Self::SourceAsset,
         _: AssetId<Self::SourceAsset>,
         render_device: &mut SystemParamItem<Self::Param>,
+        _: Option<&Self>,
     ) -> Result<Self, PrepareAssetError<Self::SourceAsset>> {
         let particle_behavior_count = source.0.len() as u32;
 
@@ -159,20 +163,23 @@ impl<R: PlanarSync> FromWorld for ParticleBehaviorPipeline<R> {
         let render_device = render_world.resource::<RenderDevice>();
         let gaussian_cloud_pipeline = render_world.resource::<CloudPipeline<R>>();
 
+        let particle_behavior_layout_entries = [BindGroupLayoutEntry {
+            binding: 7,
+            visibility: ShaderStages::COMPUTE,
+            ty: BindingType::Buffer {
+                ty: BufferBindingType::Storage { read_only: false },
+                has_dynamic_offset: false,
+                min_binding_size: BufferSize::new(std::mem::size_of::<ParticleBehavior>() as u64),
+            },
+            count: None,
+        }];
+        let particle_behavior_layout_desc = BindGroupLayoutDescriptor::new(
+            "gaussian_cloud_particle_behavior_layout",
+            &particle_behavior_layout_entries,
+        );
         let particle_behavior_layout = render_device.create_bind_group_layout(
             Some("gaussian_cloud_particle_behavior_layout"),
-            &[BindGroupLayoutEntry {
-                binding: 7,
-                visibility: ShaderStages::COMPUTE,
-                ty: BindingType::Buffer {
-                    ty: BufferBindingType::Storage { read_only: false },
-                    has_dynamic_offset: false,
-                    min_binding_size: BufferSize::new(
-                        std::mem::size_of::<ParticleBehavior>() as u64
-                    ),
-                },
-                count: None,
-            }],
+            &particle_behavior_layout_entries,
         );
 
         let shader_defs = shader_defs(CloudPipelineKey::default());
@@ -182,10 +189,10 @@ impl<R: PlanarSync> FromWorld for ParticleBehaviorPipeline<R> {
             pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
                 label: Some("particle_behavior_pipeline".into()),
                 layout: vec![
-                    gaussian_cloud_pipeline.compute_view_layout.clone(),
-                    gaussian_cloud_pipeline.gaussian_uniform_layout.clone(),
-                    gaussian_cloud_pipeline.gaussian_cloud_layout.clone(),
-                    particle_behavior_layout.clone(),
+                    gaussian_cloud_pipeline.compute_view_layout_desc.clone(),
+                    gaussian_cloud_pipeline.gaussian_uniform_layout_desc.clone(),
+                    gaussian_cloud_pipeline.gaussian_cloud_layout_desc.clone(),
+                    particle_behavior_layout_desc,
                 ],
                 push_constant_ranges: vec![],
                 shader: PARTICLE_SHADER_HANDLE,
@@ -216,10 +223,10 @@ pub fn queue_particle_behavior_bind_group<R: PlanarSync>(
     particle_behaviors: Query<(Entity, &ParticleBehaviorsHandle)>,
 ) {
     for (entity, behaviors_handle) in particle_behaviors.iter() {
-        if let Some(load_state) = asset_server.get_load_state(&behaviors_handle.0) {
-            if load_state.is_loading() {
-                continue;
-            }
+        if let Some(load_state) = asset_server.get_load_state(&behaviors_handle.0)
+            && load_state.is_loading()
+        {
+            continue;
         }
 
         if particle_behaviors_res.get(&behaviors_handle.0).is_none() {

@@ -1,5 +1,7 @@
 #define_import_path bevy_gaussian_splatting::planar
 
+#import bevy_gaussian_splatting::bindings::gaussian_uniforms
+
 #ifdef GAUSSIAN_3D_STRUCTURE
     #ifdef PRECOMPUTE_COVARIANCE_3D
         #import bevy_gaussian_splatting::bindings::{
@@ -86,13 +88,21 @@ fn planar_visibility(value: vec4<f32>) -> f32 {
     return value.w;
 }
 
+fn convert_sh_color_to_linear(color: vec3<f32>) -> vec3<f32> {
+    if gaussian_uniforms.color_space == 1u {
+        return color;
+    }
+
+    return srgb_to_linear(color);
+}
+
 #ifdef GAUSSIAN_3D_STRUCTURE
     fn planar_color_from_sh(
         ray_direction: vec3<f32>,
         sh: array<f32, #{SH_COEFF_COUNT}>,
     ) -> vec3<f32> {
         let color = spherical_harmonics_lookup(ray_direction, sh);
-        return srgb_to_linear(color);
+        return convert_sh_color_to_linear(color);
     }
 
     fn planar_scale_from(scale_opacity: vec4<f32>) -> vec3<f32> {
@@ -438,7 +448,7 @@ fn planar_visibility(value: vec4<f32>) -> f32 {
         sh: array<f32, #{SH_4D_COEFF_COUNT}>,
     ) -> vec3<f32> {
         let color = spherindrical_harmonics_lookup(ray_direction, dir_t, sh);
-        return srgb_to_linear(color);
+        return convert_sh_color_to_linear(color);
     }
 
     fn planar4d_isotropic_rotations(raw: array<f32, 8>) -> mat2x4<f32> {

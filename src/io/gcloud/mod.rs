@@ -1,6 +1,7 @@
 use static_assertions::assert_cfg;
 
-#[cfg(feature = "io_bincode2")]
+// If both codecs are enabled, prefer flexbuffers.
+#[cfg(all(feature = "io_bincode2", not(feature = "io_flexbuffers")))]
 pub mod bincode2;
 
 #[cfg(feature = "io_flexbuffers")]

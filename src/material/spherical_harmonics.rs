@@ -39,20 +39,41 @@ const fn num_sh_coefficients(degree: usize) -> usize {
 }
 
 // TODO: let SH_DEGREE be a const generic parameter to SphericalHarmonicCoefficients
-#[cfg(feature = "sh0")]
-pub const SH_DEGREE: usize = 0;
-
-#[cfg(feature = "sh1")]
-pub const SH_DEGREE: usize = 1;
-
-#[cfg(feature = "sh2")]
-pub const SH_DEGREE: usize = 2;
-
-#[cfg(feature = "sh3")]
-pub const SH_DEGREE: usize = 3;
-
+// Prefer the highest enabled SH degree when multiple degree features are active.
 #[cfg(feature = "sh4")]
 pub const SH_DEGREE: usize = 4;
+
+#[cfg(all(not(feature = "sh4"), feature = "sh3"))]
+pub const SH_DEGREE: usize = 3;
+
+#[cfg(all(not(feature = "sh4"), not(feature = "sh3"), feature = "sh2"))]
+pub const SH_DEGREE: usize = 2;
+
+#[cfg(all(
+    not(feature = "sh4"),
+    not(feature = "sh3"),
+    not(feature = "sh2"),
+    feature = "sh1"
+))]
+pub const SH_DEGREE: usize = 1;
+
+#[cfg(all(
+    not(feature = "sh4"),
+    not(feature = "sh3"),
+    not(feature = "sh2"),
+    not(feature = "sh1"),
+    feature = "sh0"
+))]
+pub const SH_DEGREE: usize = 0;
+
+#[cfg(all(
+    not(feature = "sh4"),
+    not(feature = "sh3"),
+    not(feature = "sh2"),
+    not(feature = "sh1"),
+    not(feature = "sh0")
+))]
+pub const SH_DEGREE: usize = 0;
 
 pub const SH_CHANNELS: usize = 3;
 pub const SH_COEFF_COUNT_PER_CHANNEL: usize = num_sh_coefficients(SH_DEGREE);
@@ -206,15 +227,17 @@ where
             A: serde::de::SeqAccess<'de>,
         {
             let mut coefficients = [0.0; SH_COEFF_COUNT];
+            let mut index = 0usize;
 
-            for (i, coefficient) in coefficients.iter_mut().enumerate().take(SH_COEFF_COUNT) {
-                *coefficient = seq
-                    .next_element()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(i, &self))?;
+            while let Some(value) = seq.next_element()? {
+                if index < SH_COEFF_COUNT {
+                    coefficients[index] = value;
+                }
+                index += 1;
             }
             Ok(coefficients)
         }
     }
 
-    d.deserialize_tuple(SH_COEFF_COUNT, CoefficientsVisitor)
+    d.deserialize_seq(CoefficientsVisitor)
 }
