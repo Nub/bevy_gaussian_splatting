@@ -681,6 +681,7 @@ fn mark_capture_ready(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn request_screenshot_capture(
     mut commands: Commands,
     capture_target: Option<Res<CaptureRenderTarget>>,
