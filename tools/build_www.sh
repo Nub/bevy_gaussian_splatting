@@ -52,6 +52,47 @@ fi
 echo "Generating wasm bindings..."
 "${wasm_bindgen_cmd}" --out-dir ./www/out --target web "${wasm_path}"
 
+scene_cache_dir="./assets/.thumbnail_cache"
+mkdir -p "${scene_cache_dir}"
+
+if command -v curl >/dev/null 2>&1; then
+  remote_scene_list="$(
+    grep -Eo '"(thumbnail_input_scene|input_scene)"[[:space:]]*:[[:space:]]*"https?://[^"]+"' ./www/examples/examples.json \
+      | sed -E 's/.*"(https?:\/\/[^"]+)".*/\1/' \
+      | sort -u || true
+  )"
+
+  if [[ -n "${remote_scene_list}" ]]; then
+    echo "Caching remote scenes for thumbnails..."
+    while IFS= read -r scene_url; do
+      if [[ -z "${scene_url}" ]]; then
+        continue
+      fi
+
+      url_without_query="${scene_url%%\?*}"
+      scene_file="${url_without_query##*/}"
+      if [[ -z "${scene_file}" ]]; then
+        continue
+      fi
+
+      scene_path="${scene_cache_dir}/${scene_file}"
+      echo "  ${scene_url} -> ${scene_path}"
+      curl \
+        --fail \
+        --location \
+        --retry 4 \
+        --retry-delay 2 \
+        --connect-timeout 10 \
+        --max-time 120 \
+        "${scene_url}" \
+        --output "${scene_path}"
+    done <<< "${remote_scene_list}"
+
+    export THUMBNAIL_SCENE_CACHE_DIR="${scene_cache_dir}"
+    export THUMBNAIL_SCENE_CACHE_STRICT="1"
+  fi
+fi
+
 echo "Rendering example thumbnails from manifest..."
 RENDER_EXAMPLE_THUMBNAILS=1 "${cargo_cmd}" test --test headless_examples render_example_thumbnails -- --nocapture
 

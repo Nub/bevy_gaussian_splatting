@@ -31,14 +31,16 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE};
 use bevy_gaussian_splatting::{
     CloudSettings, GaussianCamera, GaussianMode, GaussianPrimitiveMetadata, GaussianScene,
     GaussianSceneHandle, GaussianSplattingPlugin, PlanarGaussian3d, PlanarGaussian3dHandle,
-    PlanarGaussian4d, PlanarGaussian4dHandle, SceneExportCamera, SceneExportCloud,
+    PlanarGaussian4d, PlanarGaussian4dHandle,
     gaussian::interface::TestCloud,
     io::scene::GaussianSceneLoaded,
     random_gaussians_3d, random_gaussians_3d_seeded, random_gaussians_4d,
     random_gaussians_4d_seeded,
     utils::{GaussianSplattingViewer, log, setup_hooks},
-    write_khr_gaussian_scene_glb,
 };
+
+#[cfg(not(target_arch = "wasm32"))]
+use bevy_gaussian_splatting::{SceneExportCamera, SceneExportCloud, write_khr_gaussian_scene_glb};
 
 #[cfg(feature = "morph_interpolate")]
 use bevy_gaussian_splatting::{Gaussian3d, morph::interpolate::GaussianInterpolate};
@@ -66,6 +68,7 @@ struct SceneCameraApplied;
 #[derive(Component, Debug, Default)]
 struct SceneRenderModeApplied;
 
+#[cfg(not(target_arch = "wasm32"))]
 type ExportCloudQuery = (
     &'static PlanarGaussian3dHandle,
     &'static GlobalTransform,
@@ -74,6 +77,7 @@ type ExportCloudQuery = (
     Option<&'static GaussianPrimitiveMetadata>,
 );
 
+#[cfg(not(target_arch = "wasm32"))]
 type ExportCameraQuery = (&'static GlobalTransform, Option<&'static Name>);
 type SceneCameraApplyQuery = (Entity, &'static mut Transform, &'static mut PanOrbitCamera);
 type SceneRenderModeQuery = (Entity, &'static Children);

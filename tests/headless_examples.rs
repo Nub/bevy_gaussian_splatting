@@ -225,7 +225,8 @@ fn apply_args(
     base = serde_json::from_value(base_value).expect("failed to deserialize args");
 
     if let Some(input_scene) = effective_scene {
-        base.input_scene = Some(input_scene.clone());
+        let resolved_scene = resolve_thumbnail_scene_input(input_scene);
+        base.input_scene = Some(resolved_scene);
         base.input_cloud = None;
     } else if let Some(input_cloud) = effective_cloud {
         base.input_cloud = Some(input_cloud.clone());
@@ -233,6 +234,58 @@ fn apply_args(
     }
 
     base
+}
+
+fn resolve_thumbnail_scene_input(input_scene: &str) -> String {
+    let is_remote = input_scene.starts_with("https://") || input_scene.starts_with("http://");
+    if !is_remote {
+        return input_scene.to_owned();
+    }
+
+    let strict_cache = std::env::var("THUMBNAIL_SCENE_CACHE_STRICT")
+        .ok()
+        .as_deref()
+        == Some("1");
+    let Some(cache_dir) = std::env::var("THUMBNAIL_SCENE_CACHE_DIR").ok() else {
+        return input_scene.to_owned();
+    };
+
+    let url_without_query = input_scene.split('?').next().unwrap_or(input_scene);
+    let Some(file_name) = url_without_query.rsplit('/').next() else {
+        return input_scene.to_owned();
+    };
+    if file_name.is_empty() {
+        return input_scene.to_owned();
+    }
+
+    let cached_path = PathBuf::from(cache_dir).join(file_name);
+    if cached_path.exists() {
+        let resolved_path = cached_path
+            .canonicalize()
+            .unwrap_or_else(|_| cached_path.clone())
+            .to_string_lossy()
+            .replace('\\', "/");
+        println!(
+            "[thumbnails] using cached scene for '{}': {}",
+            input_scene,
+            resolved_path
+        );
+        return resolved_path;
+    }
+
+    if strict_cache {
+        panic!(
+            "missing cached thumbnail scene for '{}' at '{}'",
+            input_scene,
+            cached_path.display()
+        );
+    }
+
+    println!(
+        "[thumbnails] scene cache miss for '{}', falling back to remote URL",
+        input_scene
+    );
+    input_scene.to_owned()
 }
 
 fn render_example(args: GaussianSplattingViewer, output_path: PathBuf) {
