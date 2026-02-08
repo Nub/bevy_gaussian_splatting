@@ -2255,6 +2255,134 @@ mod tests {
         assert_eq!(quaternion, [1.0, 0.0, 0.0, 0.0]);
     }
 
+    fn build_gltf_with_accessors(
+        buffer: Vec<u8>,
+        buffer_views: Vec<(usize, usize)>,
+        accessors: Vec<Value>,
+    ) -> gltf::Gltf {
+        let buffer_views_json: Vec<Value> = buffer_views
+            .into_iter()
+            .map(|(byte_offset, byte_length)| {
+                json!({
+                    "buffer": 0,
+                    "byteOffset": byte_offset,
+                    "byteLength": byte_length,
+                })
+            })
+            .collect();
+
+        let root = json!({
+            "asset": { "version": "2.0" },
+            "buffers": [
+                { "byteLength": buffer.len() }
+            ],
+            "bufferViews": buffer_views_json,
+            "accessors": accessors,
+        });
+
+        let bytes = serde_json::to_vec(&root).expect("failed to serialize glTF");
+        let gltf = gltf::Gltf::from_slice_without_validation(&bytes)
+            .expect("failed to parse glTF");
+
+        assert!(gltf.blob.is_none());
+        gltf
+    }
+
+    #[test]
+    fn reads_quantized_rotation_scale_opacity() {
+        let rotation_bytes = [127i8, 0, 0, 0].map(|v| v as u8);
+        let scale_bytes = [-127i8, 0, 127].map(|v| v as u8);
+        let opacity_bytes = [128u8];
+
+        let mut buffer = Vec::new();
+        buffer.extend_from_slice(&rotation_bytes);
+        let rotation_offset = 0usize;
+        let scale_offset = buffer.len();
+        buffer.extend_from_slice(&scale_bytes);
+        buffer.push(0);
+        buffer.push(0);
+        buffer.push(0);
+        let opacity_offset = buffer.len();
+        buffer.extend_from_slice(&opacity_bytes);
+        buffer.resize(buffer.len() + 3, 0);
+
+        let gltf = build_gltf_with_accessors(
+            buffer.clone(),
+            vec![
+                (rotation_offset, rotation_bytes.len()),
+                (scale_offset, scale_bytes.len()),
+                (opacity_offset, opacity_bytes.len()),
+            ],
+            vec![
+                json!({
+                    "bufferView": 0,
+                    "componentType": 5120,
+                    "count": 1,
+                    "type": "VEC4",
+                    "normalized": true,
+                }),
+                json!({
+                    "bufferView": 1,
+                    "componentType": 5120,
+                    "count": 1,
+                    "type": "VEC3",
+                    "normalized": true,
+                }),
+                json!({
+                    "bufferView": 2,
+                    "componentType": 5121,
+                    "count": 1,
+                    "type": "SCALAR",
+                    "normalized": true,
+                }),
+            ],
+        );
+
+        let accessors: Vec<_> = gltf.document.accessors().collect();
+        let buffers = vec![buffer];
+
+        let rotations = read_rotation_attribute(&accessors[0], &buffers).unwrap();
+        assert!((rotations[0][0] - 1.0).abs() < 1e-6);
+        assert!(rotations[0][1].abs() < 1e-6);
+        assert!(rotations[0][2].abs() < 1e-6);
+        assert!(rotations[0][3].abs() < 1e-6);
+
+        let scales = read_scale_attribute(&accessors[1], &buffers).unwrap();
+        assert!((scales[0][0] - (-1.0f32).exp()).abs() < 1e-6);
+        assert!((scales[0][1] - 0.0f32.exp()).abs() < 1e-6);
+        assert!((scales[0][2] - 1.0f32.exp()).abs() < 1e-6);
+
+        let opacities = read_opacity_attribute(&accessors[2], &buffers).unwrap();
+        assert!((opacities[0] - (128.0 / 255.0)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn reads_unnormalized_scale_i16() {
+        let scale_values: [i16; 3] = [-2, 0, 2];
+        let mut buffer = Vec::new();
+        for value in scale_values {
+            buffer.extend_from_slice(&value.to_le_bytes());
+        }
+        buffer.resize(buffer.len() + 2, 0);
+
+        let gltf = build_gltf_with_accessors(
+            buffer.clone(),
+            vec![(0, scale_values.len() * std::mem::size_of::<i16>())],
+            vec![json!({
+                "bufferView": 0,
+                "componentType": 5122,
+                "count": 1,
+                "type": "VEC3",
+            })],
+        );
+
+        let accessors: Vec<_> = gltf.document.accessors().collect();
+        let scales = read_scale_attribute(&accessors[0], &[buffer]).unwrap();
+        assert!((scales[0][0] - (-2.0f32).exp()).abs() < 1e-6);
+        assert!((scales[0][1] - 0.0f32.exp()).abs() < 1e-6);
+        assert!((scales[0][2] - 2.0f32.exp()).abs() < 1e-6);
+    }
+
     #[test]
     fn skips_invalid_rotation_gaussians_during_export() {
         let invalid = Gaussian3d {
