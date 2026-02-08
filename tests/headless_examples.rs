@@ -106,7 +106,7 @@ impl CaptureController {
         Self {
             frames_since_ready: 0,
             total_frames: 0,
-            warmup_frames_after_ready: 10,
+            warmup_frames_after_ready: 15,
             max_total_frames: 600,
             started_at: Instant::now(),
             max_elapsed: Duration::from_secs(90),
