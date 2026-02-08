@@ -40,10 +40,13 @@ jobs:
           RUSTFLAGS: ""
           CARGO_ENCODED_RUSTFLAGS: ""
           RUSTDOCFLAGS: ""
+          THUMBNAIL_SCENE_CACHE_CLEANUP: "1"
         run: bash ./tools/build_www.sh
 
       - name: copy assets
-        run: mkdir -p ./www/assets && cp -R ./assets/. ./www/assets/
+        run: |
+          mkdir -p ./www/assets
+          rsync -a --exclude '.thumbnail_cache' ./assets/ ./www/assets/
 
       - name: deploy to github pages
         uses: JamesIves/github-pages-deploy-action@v4

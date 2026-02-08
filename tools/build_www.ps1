@@ -47,4 +47,12 @@ try {
   Remove-Item Env:RENDER_EXAMPLE_THUMBNAILS -ErrorAction SilentlyContinue
 }
 
+if ($env:THUMBNAIL_SCENE_CACHE_CLEANUP -eq '1') {
+  $sceneCache = Join-Path 'assets' '.thumbnail_cache'
+  if (Test-Path $sceneCache) {
+    Write-Host "Cleaning thumbnail scene cache..."
+    Remove-Item $sceneCache -Recurse -Force
+  }
+}
+
 Write-Host 'www build complete.'

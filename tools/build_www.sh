@@ -96,4 +96,9 @@ fi
 echo "Rendering example thumbnails from manifest..."
 RENDER_EXAMPLE_THUMBNAILS=1 THUMBNAIL_SORT_MODE=std "${cargo_cmd}" test --test headless_examples render_example_thumbnails -- --nocapture
 
+if [[ "${THUMBNAIL_SCENE_CACHE_CLEANUP:-0}" == "1" ]]; then
+  echo "Cleaning thumbnail scene cache..."
+  rm -rf "${scene_cache_dir}"
+fi
+
 echo "www build complete."
