@@ -33,7 +33,7 @@ use bevy_gaussian_splatting::{
     io::scene::GaussianSceneLoaded,
     random_gaussians_3d, random_gaussians_3d_seeded, random_gaussians_4d,
     random_gaussians_4d_seeded,
-    sort::{SortTrigger, SortedEntriesHandle},
+    sort::{SortMode, SortTrigger, SortedEntriesHandle},
     utils::GaussianSplattingViewer,
 };
 use bevy_interleave::prelude::Planar;
@@ -120,6 +120,11 @@ impl CaptureController {
 #[derive(Resource, Clone)]
 struct OutputTarget {
     path: PathBuf,
+}
+
+#[derive(Resource, Clone)]
+struct ThumbnailRenderConfig {
+    sort_mode: SortMode,
 }
 
 #[derive(Resource, Clone, Deref)]
@@ -267,8 +272,7 @@ fn resolve_thumbnail_scene_input(input_scene: &str) -> String {
             .replace('\\', "/");
         println!(
             "[thumbnails] using cached scene for '{}': {}",
-            input_scene,
-            resolved_path
+            input_scene, resolved_path
         );
         return resolved_path;
     }
@@ -288,10 +292,73 @@ fn resolve_thumbnail_scene_input(input_scene: &str) -> String {
     input_scene.to_owned()
 }
 
+fn supported_thumbnail_sort_modes() -> String {
+    let mut modes = vec!["default", "none"];
+    #[cfg(all(feature = "sort_radix", not(feature = "buffer_texture")))]
+    modes.push("radix");
+    #[cfg(feature = "sort_rayon")]
+    modes.push("rayon");
+    #[cfg(feature = "sort_std")]
+    modes.push("std");
+    modes.join(", ")
+}
+
+fn preferred_thumbnail_sort_mode() -> SortMode {
+    let requested = std::env::var("THUMBNAIL_SORT_MODE")
+        .ok()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty());
+
+    if let Some(value) = requested.as_deref() {
+        if value == "default" {
+            return SortMode::default();
+        }
+        if value == "none" {
+            return SortMode::None;
+        }
+        #[cfg(all(feature = "sort_radix", not(feature = "buffer_texture")))]
+        if value == "radix" {
+            return SortMode::Radix;
+        }
+        #[cfg(feature = "sort_rayon")]
+        if value == "rayon" {
+            return SortMode::Rayon;
+        }
+        #[cfg(feature = "sort_std")]
+        if value == "std" {
+            return SortMode::Std;
+        }
+
+        panic!(
+            "unsupported THUMBNAIL_SORT_MODE='{value}', expected one of: {}",
+            supported_thumbnail_sort_modes()
+        );
+    }
+
+    #[cfg(feature = "sort_std")]
+    {
+        SortMode::Std
+    }
+
+    #[cfg(all(not(feature = "sort_std"), feature = "sort_rayon"))]
+    {
+        SortMode::Rayon
+    }
+
+    #[cfg(all(not(feature = "sort_std"), not(feature = "sort_rayon")))]
+    {
+        SortMode::default()
+    }
+}
+
 fn render_example(args: GaussianSplattingViewer, output_path: PathBuf) {
+    let sort_mode = preferred_thumbnail_sort_mode();
+    println!("[thumbnails] thumbnail sort mode: {sort_mode:?}");
+
     App::new()
         .insert_resource(CaptureController::new(THUMB_WIDTH, THUMB_HEIGHT))
         .insert_resource(OutputTarget { path: output_path })
+        .insert_resource(ThumbnailRenderConfig { sort_mode })
         .insert_resource(AutoFrameState::default())
         .insert_resource(ClearColor(Color::srgb_u8(0, 0, 0)))
         .insert_resource(args)
@@ -337,6 +404,7 @@ fn setup_gaussian_cloud(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     args: Res<GaussianSplattingViewer>,
+    render_config: Res<ThumbnailRenderConfig>,
     mut gaussian_assets: ResMut<Assets<PlanarGaussian3d>>,
     mut gaussian_4d_assets: ResMut<Assets<PlanarGaussian4d>>,
     mut images: ResMut<Assets<Image>>,
@@ -347,6 +415,7 @@ fn setup_gaussian_cloud(
         gaussian_mode: args.gaussian_mode,
         playback_mode: args.playback_mode,
         rasterize_mode: args.rasterization_mode,
+        sort_mode: render_config.sort_mode.clone(),
         global_scale: 8.0,
         global_opacity: 2.0,
         ..default()
@@ -470,6 +539,7 @@ fn apply_scene_camera_spawn(
 fn apply_scene_render_mode_override(
     mut commands: Commands,
     args: Res<GaussianSplattingViewer>,
+    render_config: Res<ThumbnailRenderConfig>,
     scenes: Query<SceneRenderModeQuery, SceneRenderModeFilter>,
     mut cloud_settings: Query<&mut CloudSettings>,
 ) {
@@ -482,6 +552,7 @@ fn apply_scene_render_mode_override(
             let child: Entity = child;
             if let Ok(mut settings) = cloud_settings.get_mut(child) {
                 settings.rasterize_mode = args.rasterization_mode;
+                settings.sort_mode = render_config.sort_mode.clone();
             }
         }
 
@@ -540,7 +611,10 @@ fn mark_capture_ready(
                 if let Some(load_state) = asset_server.get_load_state(&cloud_handle.0) {
                     match load_state {
                         LoadState::Failed(err) => {
-                            panic!("failed to load scene cloud asset {:?}: {err}", cloud_handle.0);
+                            panic!(
+                                "failed to load scene cloud asset {:?}: {err}",
+                                cloud_handle.0
+                            );
                         }
                         state if !state.is_loaded() => {
                             scene_clouds_ready = false;
@@ -557,6 +631,12 @@ fn mark_capture_ready(
             }
 
             if scene_cloud_count > 0 && scene_clouds_ready {
+                println!(
+                    "[thumbnails] scene ready (clouds={}, camera_applied={}, render_mode_applied={})",
+                    scene_cloud_count,
+                    camera_applied.is_some(),
+                    render_mode_applied.is_some()
+                );
                 auto_frame.done = true;
                 return;
             }
@@ -576,6 +656,7 @@ fn mark_capture_ready(
         }
 
         if cloud_assets.get(&cloud_handle.0).is_some() {
+            println!("[thumbnails] cloud ready (3d)");
             auto_frame.done = true;
             return;
         }
@@ -593,6 +674,7 @@ fn mark_capture_ready(
         }
 
         if cloud_assets_4d.get(&cloud_handle.0).is_some() {
+            println!("[thumbnails] cloud ready (4d)");
             auto_frame.done = true;
             return;
         }
@@ -649,6 +731,10 @@ fn request_screenshot_capture(
         return;
     };
 
+    println!(
+        "[thumbnails] requesting screenshot (elapsed={:?}, frames_since_ready={})",
+        elapsed, controller.frames_since_ready
+    );
     commands.spawn(Screenshot::image(capture_target.0.clone()));
     controller.capture_requested = true;
 }
@@ -658,6 +744,10 @@ fn on_screenshot_captured(
     output_target: Res<OutputTarget>,
     mut app_exit: MessageWriter<AppExit>,
 ) {
+    println!(
+        "[thumbnails] screenshot captured for '{}'",
+        output_target.path.display()
+    );
     let img = match trigger.image.clone().try_into_dynamic() {
         Ok(img) => img.to_rgba8(),
         Err(e) => panic!("Failed to convert screenshot image: {e:?}"),

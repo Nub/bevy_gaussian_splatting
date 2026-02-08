@@ -15,6 +15,12 @@ function Invoke-Step {
 if (Test-Path Env:RUSTFLAGS) {
   Remove-Item Env:RUSTFLAGS
 }
+if (Test-Path Env:CARGO_ENCODED_RUSTFLAGS) {
+  Remove-Item Env:CARGO_ENCODED_RUSTFLAGS
+}
+if (Test-Path Env:RUSTDOCFLAGS) {
+  Remove-Item Env:RUSTDOCFLAGS
+}
 
 Write-Host 'Building wasm (web feature set)...'
 Invoke-Step cargo build --target wasm32-unknown-unknown --release --no-default-features --features web
@@ -33,9 +39,11 @@ Invoke-Step wasm-bindgen --out-dir ./www/out --target web $wasmPath
 
 Write-Host 'Rendering example thumbnails from manifest...'
 $env:RENDER_EXAMPLE_THUMBNAILS = '1'
+$env:THUMBNAIL_SORT_MODE = 'std'
 try {
   Invoke-Step cargo test --test headless_examples render_example_thumbnails -- --nocapture
 } finally {
+  Remove-Item Env:THUMBNAIL_SORT_MODE -ErrorAction SilentlyContinue
   Remove-Item Env:RENDER_EXAMPLE_THUMBNAILS -ErrorAction SilentlyContinue
 }
 

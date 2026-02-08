@@ -94,6 +94,6 @@ if command -v curl >/dev/null 2>&1; then
 fi
 
 echo "Rendering example thumbnails from manifest..."
-RENDER_EXAMPLE_THUMBNAILS=1 "${cargo_cmd}" test --test headless_examples render_example_thumbnails -- --nocapture
+RENDER_EXAMPLE_THUMBNAILS=1 THUMBNAIL_SORT_MODE=std "${cargo_cmd}" test --test headless_examples render_example_thumbnails -- --nocapture
 
 echo "www build complete."
