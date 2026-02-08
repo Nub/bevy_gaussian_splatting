@@ -49,6 +49,10 @@ pub fn rayon_sort<R: PlanarSync>(
             continue;
         }
 
+        let mut saw_sortable_cloud = false;
+        let mut pending_assets = false;
+        let mut sorted_any = false;
+
         for (gaussian_cloud_handle, sorted_entries_handle, settings, transform) in
             gaussian_clouds.iter()
         {
@@ -56,18 +60,19 @@ pub fn rayon_sort<R: PlanarSync>(
                 continue;
             }
 
-            trigger.needs_sort = false;
-            performed_sort = true;
+            saw_sortable_cloud = true;
 
             if let Some(load_state) = asset_server.get_load_state(gaussian_cloud_handle.handle())
                 && load_state.is_loading()
             {
+                pending_assets = true;
                 continue;
             }
 
             if let Some(load_state) = asset_server.get_load_state(&sorted_entries_handle.0)
                 && load_state.is_loading()
             {
+                pending_assets = true;
                 continue;
             }
 
@@ -99,7 +104,17 @@ pub fn rayon_sort<R: PlanarSync>(
                 });
 
                 // TODO: update DrawIndirect buffer during sort phase (GPU sort will override default DrawIndirect)
+                sorted_any = true;
+            } else {
+                pending_assets = true;
             }
+        }
+
+        if sorted_any {
+            performed_sort = true;
+        }
+        if saw_sortable_cloud && sorted_any && !pending_assets {
+            trigger.needs_sort = false;
         }
     }
 

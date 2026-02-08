@@ -1498,12 +1498,9 @@ fn collect_sh_coefficient_map(
 
     let supported_degree = max_supported_sh_degree();
     if max_degree > supported_degree {
-        return Err(std::io::Error::new(
-            ErrorKind::InvalidData,
-            format!(
-                "asset requires spherical harmonics degree {max_degree}, but this build supports up to degree {supported_degree}"
-            ),
-        ));
+        warn!(
+            "asset uses spherical harmonics degree {max_degree}, but this build supports up to degree {supported_degree}; higher-degree coefficients will be discarded"
+        );
     }
 
     for degree in 0..=max_degree {
@@ -1539,7 +1536,8 @@ fn collect_sh_coefficient_map(
     }
 
     let mut coefficient_map = Vec::new();
-    for degree in 0..=max_degree {
+    let map_max_degree = max_degree.min(supported_degree);
+    for degree in 0..=map_max_degree {
         let coefficients = &degrees[&degree];
         for coefficient in 0..(2 * degree + 1) {
             let accessor_index = coefficients[&coefficient];
@@ -2073,11 +2071,41 @@ mod tests {
 
         let err = collect_sh_coefficient_map(&attributes).unwrap_err();
         let message = err.to_string();
-        if max_supported_sh_degree() >= 1 {
-            assert!(message.contains("must define exactly"));
-        } else {
-            assert!(message.contains("supports up to degree"));
+        assert!(message.contains("must define exactly"));
+    }
+
+    #[test]
+    fn clips_sh_coefficients_above_supported_degree() {
+        let supported_degree = max_supported_sh_degree();
+        if supported_degree >= 3 {
+            return;
         }
+
+        let mut attributes = HashMap::new();
+        attributes.insert(
+            "KHR_gaussian_splatting:SH_DEGREE_0_COEF_0".to_owned(),
+            0usize,
+        );
+
+        let mut index = 1usize;
+        for degree in 1..=3 {
+            for coefficient in 0..(2 * degree + 1) {
+                attributes.insert(
+                    format!("KHR_gaussian_splatting:SH_DEGREE_{degree}_COEF_{coefficient}"),
+                    index,
+                );
+                index += 1;
+            }
+        }
+
+        let result = collect_sh_coefficient_map(&attributes).unwrap();
+        assert_eq!(
+            result.len(),
+            (supported_degree + 1) * (supported_degree + 1)
+        );
+        assert!(result
+            .iter()
+            .all(|(index, _)| *index < (supported_degree + 1) * (supported_degree + 1)));
     }
 
     #[test]

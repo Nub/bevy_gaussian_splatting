@@ -686,6 +686,10 @@ fn request_screenshot_capture(
     capture_target: Option<Res<CaptureRenderTarget>>,
     output_target: Res<OutputTarget>,
     auto_frame: Res<AutoFrameState>,
+    render_config: Res<ThumbnailRenderConfig>,
+    cameras: Query<&SortTrigger, With<GaussianCamera>>,
+    clouds_3d: Query<Option<&SortedEntriesHandle>, With<PlanarGaussian3dHandle>>,
+    clouds_4d: Query<Option<&SortedEntriesHandle>, With<PlanarGaussian4dHandle>>,
     mut controller: ResMut<CaptureController>,
 ) {
     let elapsed = controller.started_at.elapsed();
@@ -716,6 +720,57 @@ fn request_screenshot_capture(
     if !auto_frame.done {
         controller.frames_since_ready = 0;
         return;
+    }
+
+    let requires_cpu_sort = match render_config.sort_mode {
+        #[cfg(feature = "sort_std")]
+        SortMode::Std => true,
+        #[cfg(feature = "sort_rayon")]
+        SortMode::Rayon => true,
+        _ => false,
+    };
+
+    if requires_cpu_sort {
+        let mut sort_ready = true;
+        let mut saw_camera = false;
+        for trigger in cameras.iter() {
+            saw_camera = true;
+            if trigger.needs_sort {
+                sort_ready = false;
+                break;
+            }
+        }
+        if !saw_camera {
+            sort_ready = false;
+        }
+
+        let mut saw_cloud = false;
+        if sort_ready {
+            for sorted_handle in clouds_3d.iter() {
+                saw_cloud = true;
+                if sorted_handle.is_none() {
+                    sort_ready = false;
+                    break;
+                }
+            }
+        }
+        if sort_ready {
+            for sorted_handle in clouds_4d.iter() {
+                saw_cloud = true;
+                if sorted_handle.is_none() {
+                    sort_ready = false;
+                    break;
+                }
+            }
+        }
+        if !saw_cloud {
+            sort_ready = false;
+        }
+
+        if !sort_ready {
+            controller.frames_since_ready = 0;
+            return;
+        }
     }
 
     controller.frames_since_ready += 1;
