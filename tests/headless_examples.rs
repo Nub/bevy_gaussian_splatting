@@ -2,6 +2,7 @@
 
 use bevy::{
     app::{AppExit, ScheduleRunnerPlugin},
+    asset::LoadState,
     camera::primitives::Aabb,
     camera::visibility::ViewVisibility,
     camera::{Projection, RenderTarget},
@@ -47,7 +48,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 const MANIFEST_PATH: &str = "www/examples/examples.json";
@@ -87,12 +88,14 @@ struct MainWorldReceiver(Receiver<Vec<u8>>);
 #[derive(Resource, Deref)]
 struct RenderWorldSender(Sender<Vec<u8>>);
 
-#[derive(Debug, Default, Resource)]
+#[derive(Debug, Resource)]
 struct CaptureController {
     frames_since_ready: u32,
     total_frames: u32,
     warmup_frames_after_ready: u32,
     max_total_frames: u32,
+    started_at: Instant,
+    max_elapsed: Duration,
     capture_requested: bool,
     width: u32,
     height: u32,
@@ -105,6 +108,8 @@ impl CaptureController {
             total_frames: 0,
             warmup_frames_after_ready: 10,
             max_total_frames: 600,
+            started_at: Instant::now(),
+            max_elapsed: Duration::from_secs(90),
             capture_requested: false,
             width,
             height,
@@ -161,7 +166,18 @@ fn render_example_thumbnails() {
             std::fs::create_dir_all(parent).expect("failed to create thumbnail directory");
         }
 
+        let started = Instant::now();
+        println!(
+            "[thumbnails] rendering '{}' -> {}",
+            example.id,
+            output_path.display()
+        );
         render_example(args, output_path);
+        println!(
+            "[thumbnails] rendered '{}' in {:?}",
+            example.id,
+            started.elapsed()
+        );
     }
 }
 
@@ -374,10 +390,14 @@ fn apply_scene_camera_spawn(
     mut cameras: Query<&mut Transform, With<GaussianCamera>>,
 ) {
     for (entity, scene_handle) in scene_handles.iter() {
-        if let Some(load_state) = asset_server.get_load_state(&scene_handle.0)
-            && !load_state.is_loaded()
-        {
-            continue;
+        if let Some(load_state) = asset_server.get_load_state(&scene_handle.0) {
+            match load_state {
+                LoadState::Failed(err) => {
+                    panic!("failed to load scene asset {:?}: {err}", scene_handle.0);
+                }
+                state if !state.is_loaded() => continue,
+                _ => {}
+            }
         }
 
         let Some(scene) = scenes.get(&scene_handle.0) else {
@@ -436,10 +456,14 @@ fn mark_capture_ready(
     if args.input_scene.is_some() {
         for (_, scene_handle, children, camera_applied, render_mode_applied) in scene_handles.iter()
         {
-            if let Some(load_state) = asset_server.get_load_state(&scene_handle.0)
-                && !load_state.is_loaded()
-            {
-                continue;
+            if let Some(load_state) = asset_server.get_load_state(&scene_handle.0) {
+                match load_state {
+                    LoadState::Failed(err) => {
+                        panic!("failed to load scene asset {:?}: {err}", scene_handle.0);
+                    }
+                    state if !state.is_loaded() => continue,
+                    _ => {}
+                }
             }
 
             if scenes.get(&scene_handle.0).is_none()
@@ -460,11 +484,17 @@ fn mark_capture_ready(
 
                 scene_cloud_count += 1;
 
-                if let Some(load_state) = asset_server.get_load_state(&cloud_handle.0)
-                    && !load_state.is_loaded()
-                {
-                    scene_clouds_ready = false;
-                    break;
+                if let Some(load_state) = asset_server.get_load_state(&cloud_handle.0) {
+                    match load_state {
+                        LoadState::Failed(err) => {
+                            panic!("failed to load scene cloud asset {:?}: {err}", cloud_handle.0);
+                        }
+                        state if !state.is_loaded() => {
+                            scene_clouds_ready = false;
+                            break;
+                        }
+                        _ => {}
+                    }
                 }
 
                 if cloud_assets.get(&cloud_handle.0).is_none() {
@@ -482,10 +512,14 @@ fn mark_capture_ready(
     }
 
     for cloud_handle in cloud_handles.iter() {
-        if let Some(load_state) = asset_server.get_load_state(&cloud_handle.0)
-            && !load_state.is_loaded()
-        {
-            continue;
+        if let Some(load_state) = asset_server.get_load_state(&cloud_handle.0) {
+            match load_state {
+                LoadState::Failed(err) => {
+                    panic!("failed to load cloud asset {:?}: {err}", cloud_handle.0);
+                }
+                state if !state.is_loaded() => continue,
+                _ => {}
+            }
         }
 
         if cloud_assets.get(&cloud_handle.0).is_some() {
@@ -495,10 +529,14 @@ fn mark_capture_ready(
     }
 
     for cloud_handle in cloud_handles_4d.iter() {
-        if let Some(load_state) = asset_server.get_load_state(&cloud_handle.0)
-            && !load_state.is_loaded()
-        {
-            continue;
+        if let Some(load_state) = asset_server.get_load_state(&cloud_handle.0) {
+            match load_state {
+                LoadState::Failed(err) => {
+                    panic!("failed to load 4d cloud asset {:?}: {err}", cloud_handle.0);
+                }
+                state if !state.is_loaded() => continue,
+                _ => {}
+            }
         }
 
         if cloud_assets_4d.get(&cloud_handle.0).is_some() {
@@ -515,11 +553,25 @@ fn request_screenshot_capture(
     auto_frame: Res<AutoFrameState>,
     mut controller: ResMut<CaptureController>,
 ) {
+    let elapsed = controller.started_at.elapsed();
+    if elapsed > controller.max_elapsed {
+        panic!(
+            "timed out while generating thumbnail: {:?} (elapsed={:?}, auto_frame.done={}, frames_since_ready={}, capture_requested={})",
+            output_target.path,
+            elapsed,
+            auto_frame.done,
+            controller.frames_since_ready,
+            controller.capture_requested,
+        );
+    }
+
     controller.total_frames += 1;
     if controller.total_frames > controller.max_total_frames {
         panic!(
-            "timed out while generating thumbnail: {:?} (auto_frame.done={} frames_since_ready={} capture_requested={})",
+            "timed out while generating thumbnail: {:?} (elapsed={:?}, total_frames={}, auto_frame.done={}, frames_since_ready={}, capture_requested={})",
             output_target.path,
+            elapsed,
+            controller.total_frames,
             auto_frame.done,
             controller.frames_since_ready,
             controller.capture_requested,
