@@ -285,7 +285,12 @@ fn expected_cases() -> HashMap<&'static str, ExpectedCase> {
     cases
 }
 
-fn assert_case_cloud(case_name: &str, cloud: &PlanarGaussian3d, expected: ExpectedCase) {
+fn assert_case_cloud(
+    case_name: &str,
+    cloud: &PlanarGaussian3d,
+    expected: ExpectedCase,
+    supported_sh_degree: usize,
+) {
     assert_eq!(cloud.position_visibility.len(), 1, "case {case_name}");
     assert_eq!(cloud.rotation.len(), 1, "case {case_name}");
     assert_eq!(cloud.scale_opacity.len(), 1, "case {case_name}");
@@ -310,7 +315,8 @@ fn assert_case_cloud(case_name: &str, cloud: &PlanarGaussian3d, expected: Expect
     approx_eq(cloud.scale_opacity[0].opacity, expected.opacity, 1e-5);
 
     let coeffs = &cloud.spherical_harmonic[0].coefficients;
-    let expected_coeff_count = (expected.sh_degree + 1) * (expected.sh_degree + 1);
+    let clamped_degree = expected.sh_degree.min(supported_sh_degree);
+    let expected_coeff_count = (clamped_degree + 1) * (clamped_degree + 1);
     for coefficient in 0..expected_coeff_count {
         let base = coefficient * 3;
         approx_eq(coeffs[base], coefficient as f32 + 0.1, 1e-6);
@@ -319,7 +325,11 @@ fn assert_case_cloud(case_name: &str, cloud: &PlanarGaussian3d, expected: Expect
     }
 }
 
-fn assert_scene_cases(scene: &GaussianScene, clouds: &HashMap<String, PlanarGaussian3d>) {
+fn assert_scene_cases(
+    scene: &GaussianScene,
+    clouds: &HashMap<String, PlanarGaussian3d>,
+    supported_sh_degree: usize,
+) {
     let expected = expected_cases();
     assert_eq!(scene.bundles.len(), expected.len());
     assert_eq!(clouds.len(), expected.len());
@@ -345,7 +355,7 @@ fn assert_scene_cases(scene: &GaussianScene, clouds: &HashMap<String, PlanarGaus
         let cloud = clouds
             .get(case_name)
             .unwrap_or_else(|| panic!("missing cloud for case '{case_name}'"));
-        assert_case_cloud(case_name, cloud, expected_case);
+        assert_case_cloud(case_name, cloud, expected_case, supported_sh_degree);
     }
 }
 
@@ -353,17 +363,8 @@ fn assert_scene_cases(scene: &GaussianScene, clouds: &HashMap<String, PlanarGaus
 fn khr_loader_conformance_matrix_gltf_and_glb() {
     let supported_sh_degree = max_supported_test_sh_degree();
     for fixture in ["khr_conformance_matrix.gltf", "khr_conformance_matrix.glb"] {
-        if supported_sh_degree >= 3 {
-            let (scene, clouds) = load_fixture_scene(fixture);
-            assert_scene_cases(&scene, &clouds);
-            continue;
-        }
-
-        let err = try_load_fixture_scene(fixture).unwrap_err();
-        assert!(
-            err.contains("supports up to degree"),
-            "expected unsupported SH degree error for fixture '{fixture}', got: {err}"
-        );
+        let (scene, clouds) = load_fixture_scene(fixture);
+        assert_scene_cases(&scene, &clouds, supported_sh_degree);
     }
 }
 
