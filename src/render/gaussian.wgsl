@@ -1,4 +1,5 @@
 #import bevy_gaussian_splatting::bindings::{
+    globals,
     view,
     gaussian_uniforms,
     Entry,
@@ -12,6 +13,8 @@
 #import bevy_gaussian_splatting::helpers::{
     get_rotation_matrix,
     get_scale_matrix,
+    hash_u,
+    fbm_noise,
 }
 #import bevy_gaussian_splatting::transform::{
     world_to_clip,
@@ -195,10 +198,37 @@ fn vs_points(
 
     discard_quad |= entry.key == 0xFFFFFFFFu; // || splat_index == 0u;
 
+    // Subsample: skip particles to reduce count
+    if gaussian_uniforms.subsample > 1u {
+        discard_quad |= (splat_index % gaussian_uniforms.subsample) != 0u;
+    }
+
     let position = vec4<f32>(get_position(splat_index), 1.0);
 
     var transformed_position = (gaussian_uniforms.transform * position).xyz;
+
+    // Jitter: per-particle position wobble (hash-based smooth noise)
+    if gaussian_uniforms.jitter_amplitude > 0.0 {
+        let base_t = globals.time * gaussian_uniforms.jitter_speed;
+        let seed = splat_index * 3u;
+        // Offset each particle's time by a large random amount so they're decorrelated
+        let tx = base_t + hash_u(seed) * 1000.0;
+        let ty = base_t + hash_u(seed + 1u) * 1000.0;
+        let tz = base_t + hash_u(seed + 2u) * 1000.0;
+        transformed_position += vec3<f32>(
+            fbm_noise(tx, seed),
+            fbm_noise(ty, seed + 1u),
+            fbm_noise(tz, seed + 2u)
+        ) * gaussian_uniforms.jitter_amplitude;
+    }
+
     var previous_transformed_position = transformed_position;
+
+    // Max distance culling
+    if gaussian_uniforms.max_distance > 0.0 {
+        let cam_dist = length(transformed_position - view.world_position);
+        discard_quad |= cam_dist > gaussian_uniforms.max_distance;
+    }
 
 #ifdef DRAW_SELECTED
     discard_quad |= get_visibility(splat_index) < 0.5;
@@ -227,6 +257,13 @@ fn vs_points(
     let quad_offset = quad_vertices[quad_index];
 
     var opacity = get_opacity(splat_index);
+
+    // Opacity cutoff: skip nearly-transparent particles
+    if gaussian_uniforms.opacity_cutoff > 0.0 && opacity < gaussian_uniforms.opacity_cutoff {
+        output.color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        output.position = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        return output;
+    }
 
 #ifdef OPACITY_ADAPTIVE_RADIUS
     let cutoff = sqrt(max(9.0 + 2.0 * log(opacity), 0.000001));

@@ -166,3 +166,29 @@ fn get_scale_matrix(
         0.0, 0.0, scale.z * gaussian_uniforms.global_scale,
     );
 }
+
+// --- Smooth noise utilities ---
+
+// Integer hash to pseudo-random float in [0, 1]
+fn hash_u(n: u32) -> f32 {
+    var x = n;
+    x = ((x >> 16u) ^ x) * 0x45d9f3bu;
+    x = ((x >> 16u) ^ x) * 0x45d9f3bu;
+    x = (x >> 16u) ^ x;
+    return f32(x) / 4294967295.0;
+}
+
+// Smooth value noise: cubic interpolation between hashed values, output in [-1, 1]
+fn value_noise(t: f32, seed: u32) -> f32 {
+    let i = u32(floor(t)) + seed;
+    let f = fract(t);
+    let u = f * f * (3.0 - 2.0 * f);
+    return mix(hash_u(i), hash_u(i + 1u), u) * 2.0 - 1.0;
+}
+
+// Fractal Brownian motion: 3 octaves of value noise for rich, smooth motion
+fn fbm_noise(t: f32, seed: u32) -> f32 {
+    return value_noise(t, seed) * 0.6
+         + value_noise(t * 2.0, seed + 7919u) * 0.25
+         + value_noise(t * 4.0, seed + 15973u) * 0.15;
+}

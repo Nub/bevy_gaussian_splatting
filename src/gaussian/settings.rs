@@ -74,6 +74,31 @@ pub struct CloudSettings {
     pub time_scale: f32,
     pub time_start: f32,
     pub time_stop: f32,
+    pub breathing_amplitude: f32,
+    pub breathing_speed: f32,
+    pub wave_amplitude: f32,
+    pub wave_speed: f32,
+    pub wave_frequency: f32,
+    pub wave_direction: Vec3,
+    pub pulse_amplitude: f32,
+    pub pulse_speed: f32,
+    pub pulse_frequency: f32,
+    pub pulse_origin: Vec3,
+    pub jitter_amplitude: f32,
+    pub jitter_speed: f32,
+    pub sparkle_amplitude: f32,
+    pub sparkle_speed: f32,
+    /// When true, strips entity rotation from covariance so splats stay camera-aligned
+    pub billboard: bool,
+    /// Render every Nth particle (1 = all, 2 = half, 4 = quarter). Higher = faster.
+    pub subsample: u32,
+    /// Skip particles with opacity below this threshold (0.0 = disabled)
+    pub opacity_cutoff: f32,
+    /// Skip particles beyond this distance from camera (0.0 = disabled)
+    pub max_distance: f32,
+    /// Internal: set automatically when pulse triggers (elapsed_secs at trigger time)
+    #[serde(skip)]
+    pub pulse_start_time: f32,
 }
 
 impl Default for CloudSettings {
@@ -95,6 +120,25 @@ impl Default for CloudSettings {
             time_scale: 1.0,
             time_start: 0.0,
             time_stop: 1.0,
+            breathing_amplitude: 0.0,
+            breathing_speed: 3.0,
+            wave_amplitude: 0.0,
+            wave_speed: 3.0,
+            wave_frequency: 2.0,
+            wave_direction: Vec3::Y,
+            pulse_amplitude: 0.0,
+            pulse_speed: 8.0,
+            pulse_frequency: 3.0,
+            pulse_origin: Vec3::ZERO,
+            jitter_amplitude: 0.0,
+            jitter_speed: 5.0,
+            sparkle_amplitude: 0.0,
+            sparkle_speed: 8.0,
+            billboard: false,
+            subsample: 1,
+            opacity_cutoff: 0.0,
+            max_distance: 0.0,
+            pulse_start_time: 0.0,
         }
     }
 }
@@ -104,8 +148,21 @@ pub struct SettingsPlugin;
 impl Plugin for SettingsPlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<CloudSettings>();
+        app.register_type::<DrawMode>();
+        app.register_type::<GaussianMode>();
+        app.register_type::<PlaybackMode>();
+        app.register_type::<RasterizeMode>();
+        app.register_type::<GaussianColorSpace>();
 
-        app.add_systems(Update, (playback_update,));
+        app.add_systems(Update, (playback_update, effect_pulse_trigger));
+    }
+}
+
+fn effect_pulse_trigger(time: Res<Time>, mut query: Query<&mut CloudSettings, Changed<CloudSettings>>) {
+    for mut settings in query.iter_mut() {
+        if settings.pulse_amplitude > 0.0 && settings.pulse_start_time == 0.0 {
+            settings.bypass_change_detection().pulse_start_time = time.elapsed_secs();
+        }
     }
 }
 
