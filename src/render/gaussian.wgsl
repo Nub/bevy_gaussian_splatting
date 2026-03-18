@@ -532,8 +532,9 @@ fn fs_main(input: GaussianVertexOutput) -> @location(0) vec4<f32> {
 #endif
 
     let alpha = min(exp(power) * input.color.a, 0.999);
-
-    // TODO: round alpha to terminate depth test?
+    if alpha < 1.0 / 255.0 {
+        discard;
+    }
 
     return vec4<f32>(
         input.color.rgb * alpha,

@@ -39,6 +39,7 @@ struct GaussianUniforms {
     subsample: u32,
     opacity_cutoff: f32,
     max_distance: f32,
+    max_pixel_radius: f32,
     wave_direction: vec4<f32>,
     pulse_origin: vec4<f32>,
 };

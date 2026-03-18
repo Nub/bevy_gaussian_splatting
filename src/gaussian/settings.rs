@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy_args::{Deserialize, Serialize, ValueEnum};
 
+use crate::camera::GaussianCamera;
 use crate::sort::SortMode;
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq, Reflect, Serialize, Deserialize)]
@@ -96,6 +97,14 @@ pub struct CloudSettings {
     pub opacity_cutoff: f32,
     /// Skip particles beyond this distance from camera (0.0 = disabled)
     pub max_distance: f32,
+    /// Clamp splat screen-space radius to this many pixels (0.0 = disabled)
+    pub max_pixel_radius: f32,
+    /// Distance at which LOD subsampling begins (0.0 = disabled)
+    pub lod_near_distance: f32,
+    /// Distance at which LOD subsampling reaches maximum
+    pub lod_far_distance: f32,
+    /// Maximum subsample factor at far distance
+    pub lod_max_subsample: u32,
     /// Internal: set automatically when pulse triggers (elapsed_secs at trigger time)
     #[serde(skip)]
     pub pulse_start_time: f32,
@@ -138,6 +147,10 @@ impl Default for CloudSettings {
             subsample: 1,
             opacity_cutoff: 0.0,
             max_distance: 0.0,
+            max_pixel_radius: 0.0,
+            lod_near_distance: 0.0,
+            lod_far_distance: 50.0,
+            lod_max_subsample: 8,
             pulse_start_time: 0.0,
         }
     }
@@ -154,7 +167,7 @@ impl Plugin for SettingsPlugin {
         app.register_type::<RasterizeMode>();
         app.register_type::<GaussianColorSpace>();
 
-        app.add_systems(Update, (playback_update, effect_pulse_trigger));
+        app.add_systems(Update, (playback_update, effect_pulse_trigger, lod_update));
     }
 }
 
@@ -211,5 +224,28 @@ fn playback_update(time: Res<Time>, mut query: Query<(&mut CloudSettings,)>) {
             PlaybackMode::Sin => {}
             PlaybackMode::Still => {}
         }
+    }
+}
+
+fn lod_update(
+    cameras: Query<&GlobalTransform, With<GaussianCamera>>,
+    mut clouds: Query<(&GlobalTransform, &mut CloudSettings)>,
+) {
+    for (cloud_transform, mut settings) in clouds.iter_mut() {
+        if settings.lod_near_distance <= 0.0 {
+            continue;
+        }
+
+        let min_dist = cameras
+            .iter()
+            .map(|ct| ct.translation().distance(cloud_transform.translation()))
+            .reduce(f32::min)
+            .unwrap_or(0.0);
+
+        let t = ((min_dist - settings.lod_near_distance)
+            / (settings.lod_far_distance - settings.lod_near_distance))
+            .clamp(0.0, 1.0);
+        let subsample = 1 + (t * (settings.lod_max_subsample - 1) as f32) as u32;
+        settings.bypass_change_detection().subsample = subsample;
     }
 }

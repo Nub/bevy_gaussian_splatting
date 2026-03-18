@@ -282,6 +282,11 @@ required-features = ["io_ply"]
 
 
 [[bin]]
+name = "bench_render"
+path = "tools/bench_render.rs"
+required-features = ["headless", "perftest"]
+
+[[bin]]
 name = "test_gaussian"
 path = "tests/gpu/gaussian.rs"
 required-features = ["testing"]

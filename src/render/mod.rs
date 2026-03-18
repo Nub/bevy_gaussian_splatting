@@ -992,6 +992,7 @@ pub struct CloudUniform {
     pub subsample: u32,
     pub opacity_cutoff: f32,
     pub max_distance: f32,
+    pub max_pixel_radius: f32,
     pub wave_direction: Vec4,
     pub pulse_origin: Vec4,
 }
@@ -1073,6 +1074,7 @@ pub fn extract_gaussians<R: PlanarSync>(
             subsample: settings.subsample.max(1),
             opacity_cutoff: settings.opacity_cutoff,
             max_distance: settings.max_distance,
+            max_pixel_radius: settings.max_pixel_radius,
             wave_direction: settings.wave_direction.extend(0.0),
             pulse_origin: settings.pulse_origin.extend(settings.pulse_start_time),
         };

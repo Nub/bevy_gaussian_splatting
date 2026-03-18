@@ -67,7 +67,10 @@ fn get_bounding_box_clip(
     let y_axis_length = sqrt(lambda2);
 
 #ifdef USE_AABB
-    let radius_px = cutoff * max(x_axis_length, y_axis_length);
+    var radius_px = cutoff * max(x_axis_length, y_axis_length);
+    if gaussian_uniforms.max_pixel_radius > 0.0 {
+        radius_px = min(radius_px, gaussian_uniforms.max_pixel_radius);
+    }
     let radius_ndc = vec2<f32>(
         radius_px / view.viewport.zw,
     );
@@ -82,8 +85,12 @@ fn get_bounding_box_clip(
 
     let a = (cov2d.x - cov2d.z) * (cov2d.x - cov2d.z);
     let b = sqrt(a + 4.0 * cov2d.y * cov2d.y);
-    let major_radius = sqrt((cov2d.x + cov2d.z + b) * 0.5);
-    let minor_radius = sqrt((cov2d.x + cov2d.z - b) * 0.5);
+    var major_radius = sqrt((cov2d.x + cov2d.z + b) * 0.5);
+    var minor_radius = sqrt((cov2d.x + cov2d.z - b) * 0.5);
+    if gaussian_uniforms.max_pixel_radius > 0.0 {
+        major_radius = min(major_radius, gaussian_uniforms.max_pixel_radius);
+        minor_radius = min(minor_radius, gaussian_uniforms.max_pixel_radius);
+    }
 
     let bounds = cutoff * vec2<f32>(
         major_radius,
