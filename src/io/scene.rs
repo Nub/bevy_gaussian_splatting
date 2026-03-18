@@ -221,7 +221,9 @@ impl AssetLoader for GaussianSceneLoader {
     }
 
     fn extensions(&self) -> &[&str] {
-        &["gltf", "glb"]
+        // Don't auto-match gltf/glb — those are handled by Bevy's built-in GLTF loader.
+        // Use AssetServer::load_with to explicitly select this loader for splat GLBs.
+        &[]
     }
 }
 
