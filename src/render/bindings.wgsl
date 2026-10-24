@@ -42,6 +42,8 @@ struct GaussianUniforms {
     max_pixel_radius: f32,
     wave_direction: vec4<f32>,
     pulse_origin: vec4<f32>,
+    reveal: vec4<f32>,
+    reveal_band: f32,
 };
 @group(1) @binding(0) var<uniform> gaussian_uniforms: GaussianUniforms;
 

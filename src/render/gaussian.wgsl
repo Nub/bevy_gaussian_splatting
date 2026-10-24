@@ -230,6 +230,13 @@ fn vs_points(
         discard_quad |= cam_dist > gaussian_uniforms.max_distance;
     }
 
+    // Reveal: hidden nearer than the reveal radius to its origin, each particle at its own point inside the band.
+    if gaussian_uniforms.reveal.w > 0.0 {
+        let reveal_dist = length(transformed_position - gaussian_uniforms.reveal.xyz);
+        let edge = gaussian_uniforms.reveal.w + (hash_u(splat_index * 7u + 3u) - 0.5) * gaussian_uniforms.reveal_band;
+        discard_quad |= reveal_dist < edge;
+    }
+
 #ifdef DRAW_SELECTED
     discard_quad |= get_visibility(splat_index) < 0.5;
 #endif

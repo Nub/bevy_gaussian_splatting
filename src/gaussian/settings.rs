@@ -97,6 +97,12 @@ pub struct CloudSettings {
     pub opacity_cutoff: f32,
     /// Skip particles beyond this distance from camera (0.0 = disabled)
     pub max_distance: f32,
+    /// Skip particles nearer than `reveal_radius` to this world point (0.0 = disabled): a cloud surrounding a scene
+    /// shows only where the scene has been cut away around it.
+    pub reveal_origin: Vec3,
+    pub reveal_radius: f32,
+    /// Width of the noisy edge of the reveal: each particle's own cut-off is spread over this distance.
+    pub reveal_band: f32,
     /// Clamp splat screen-space radius to this many pixels (0.0 = disabled)
     pub max_pixel_radius: f32,
     /// Distance at which LOD subsampling begins (0.0 = disabled)
@@ -147,6 +153,9 @@ impl Default for CloudSettings {
             subsample: 1,
             opacity_cutoff: 0.0,
             max_distance: 0.0,
+            reveal_origin: Vec3::ZERO,
+            reveal_radius: 0.0,
+            reveal_band: 0.0,
             max_pixel_radius: 0.0,
             lod_near_distance: 0.0,
             lod_far_distance: 50.0,

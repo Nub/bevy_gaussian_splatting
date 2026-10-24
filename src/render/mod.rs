@@ -995,6 +995,9 @@ pub struct CloudUniform {
     pub max_pixel_radius: f32,
     pub wave_direction: Vec4,
     pub pulse_origin: Vec4,
+    /// xyz: reveal origin, w: reveal radius.
+    pub reveal: Vec4,
+    pub reveal_band: f32,
 }
 
 #[allow(clippy::type_complexity)]
@@ -1077,6 +1080,8 @@ pub fn extract_gaussians<R: PlanarSync>(
             max_pixel_radius: settings.max_pixel_radius,
             wave_direction: settings.wave_direction.extend(0.0),
             pulse_origin: settings.pulse_origin.extend(settings.pulse_start_time),
+            reveal: settings.reveal_origin.extend(settings.reveal_radius),
+            reveal_band: settings.reveal_band,
         };
 
         commands_list.push((
